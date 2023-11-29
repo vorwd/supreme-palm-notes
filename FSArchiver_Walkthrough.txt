@@ -1,0 +1,235 @@
+# Walkthrough of closing a larger file system (111gb ext4, with 8gb in use) and then restoring that file system onto a smaller drive (64gb) via the FSArchiver Tool: https://github.com/fdupoux/fsarchiver
+
+I had a 111gb ext4 partition, running xubuntu, that I wanted to duplicate and put onto a 64gb eMMC drive housed in a small ACER laptop with no means of disk expansion. xUbuntu install was using only about 8gb of the drive so would fit nicely.
+I found on reddit, a user (u/Snarka), make a suggestion to someone else about FSArchiver, but they had never used it themsevles -- I decided to go down that rabbit hole and found it to be quite easy overall.  I already had a USB image with Clonezilla so put it to use again.  
+
+"Can I clone and restore a larger partition/drive on to a smaller partition/drive using Clonezilla?" was my ask into the googles...
+
+FSArchiver overviews on the interwebs are few and far between when it comes to restoring (plenty for backup tutorials) (and more specifically, restoring a file system in this use case - big to small) -- even FSArchive's website (https://www.fsarchiver.org/quickstart) seemed vague at first glance.. What I later realised was that "vague" was actually "straight forward" and "simple" and didn't need 300 steps as an indicator of it's likely success. 
+
+So, without further commentary, here are the steps I took to complete this, using FSArchiver, which was included in my Clonezilla Live USB image (image was downloaded and made in November 2023).  
+
+
+# Steps and notes begin:
+- Downloaded Clonezille Live and image to USB (follow their steps, or your own) (https://clonezilla.org/clonezilla-live.php)
+- Boot USB on the device containing partition(s) wanting to be copied
+  - When Clonezilla GUI starts, choose "exit to command shell" (something with similar wording, just choose the option to go to a shell).
+  - All commands issued may need sudo (no password was required with the Clonezilla Live image I worked with)
+
++++++ FSArchiver Probe Drives Command +++++
+- In the shell, issue command: fsarchiver probe simple
+
+- Identify partitions (not drives; partitions should be the 2nd section of data in the table) you want to "save"/"archive"/"clone"
+  - My efi was /dev/sda1 (512mb vfat, 500mb used)
+  - My linux partition to be cloned was /dev/sda2 (111gb ext4, 9gb used)
+  - Best to write these down or take a photo on your phone, as no scrolling up in this shell
+  - If you have an efi partition, take note of this as well, so you can boot properly
+
+  
+- In the shell, issue command: fdisk -l (l = list)
+
+- Identify the device you're saving to, ideally a 2nd USB stick (ensure this device is attached to your machine before booting clonezilla, as I had issues the first time and needed to restart)
+  - My "save to" USB stick was /dev/sdb1
+  - You may have already identified the "save to" USB stick via the FSArchive probe command previously, so fdisk may not be needed, ymmv
+
+- In the shell, issue command: mkdir /mnt/usb
+  - You can choose to create this mount directory where you'd like -- review the CloneZilla file system to make your decision based on your needs.  It will go away after reboot, as it's just on the CloneZilla live FS
+- In the shell, issue command: mount /dev/sdb1 /mnt/usb/
+
++++++ FSArchiver Back-up Command +++++
+- In the shell, issue command: fsarchiver savefs /mnt/usb/myclone.fsa /dev/sda1 /dev/sda2 -v -j4
+  - fsarchiver savefs /where/to/save/to/backupname.fsa /what/to/clonep1 /what/to/clonep2 -v (verbose output mode) -j4 (utilise 4 cores of cpu - change the number after -j to how many cores you want utilisied for the compression activity, or just leave -j4 off completely for single thread.
+  - Let it do its thing -- after the smaller parition completes (which for 512mb is fairly quick), efi in my case, it's not very "verbose" about what it's doing, so I thought it had hung... but I was patient, and after a bit, it completed the compression.  
+  - It output some details about successful/failed items/directories, etc -- thankfully, the output was "0" for all the failures, so seemed good to go.  It never really said "I'm done", but it seemed like it was finished with what it was doing.
+     - Be patient....
+     - Be more patient...
+  - Once you're back at the shell prompt to enter a command, it is done. 
+  
+- In the shell, issue command: shutdown now
+  - Once shutdown, remove usb drives, and redo steps above to start clonezilla in the "to-be" device and get to the shell.
+
+.........Repeat steps from above to boot other device into Clonezilla shell.........
+
+- In the shell, issue command: fsarchiver probe simple
+ - If your to-be device doesn't have the same partition structure as the first device, like device A has 2x fs on a drive and so does device B, you may need to do some changes to get it ready... 
+ - I had the exact same FS config on both devices.. an EFI parition on /dev/sda1 and linux parition on /dev/sda2, so I didn't need to do anything.  
+ - It doesn't matter if the partitions are listed with different names than the first device, like, if the to-be device was /dev/mmcblkp1 and /dev/mmcblkp2, that's ok.. just so long as you have the two seperate ones like device A, and they are of the same file system type (e.g. device 1 has one vfat EFI partition and one ext4, then device 2 needs to have one vfat EFI partition and a one ext4 to restore to (unclear if this matters... but from what I've read, it does...ymmv)
+
+- In the shell, issue command: fdisk -l (l = list)
+  - From above, this is to mount the usb we saved the archives to
+  - If so for some reason you don't see the drive you're restoring to, you'll need to troubleshoot this and ensure it's available/mounted by CloneZilla or mount it yourself using the same commands for mounting the USB save drive
+
+- In the shell, issue command: mkdir /mnt/usb
+
+- In the shell, issue command: mount /dev/sdb1/ /mnt/usb
+
++++++ FSArchiver Archive Info Command +++++
+- In the shell, issue command: fsarchiver archinfo /mnt/usb/myclone.fsa
+  - This command will give you easy reference to the ID number of each file system you previously backed up -- we'll need this for the next command.  
+  - Take note of each partition to be restored from the archive and the "System ID in Archive:" value it goes with
+
++++++ FSArchiver Archive Info Command +++++
+- In the shell, issue command: fsarchiver restfs /mnt/usb/myclone.fsa id=0,dest=/dev/sda1 id=1,dest=/dev/sda2
+  - FSArchiver restfs /where/the/save-is/backupname.fsa id=0,dest=/tobe/dev/efi/parition id=1,dest=/tobe/dev/ext4/partition
+  - **** As you'd expect... that command is going to delete everything on the partitions listed as "dest=", so be sure you choose correctly, and if needed, have backed up whatever was on there before hitting enter
+  - Be patient.................
+  - Once it issues the results and shows 0 for errors on both partitions (hopefully), you've finished... 
+
+- In the shell, issue command: shutdown now
+  - Remove usb sticks and hope it boots the EFI partition as expected :-)
+
+Notes:
+- What happens if there are errors... well, I'm not sure.. as mine didn't have any and this was the first time I used the tool :-p
+  - My *guess*, inadequate space available to restore the data.  The archiver compresses the data when you did the back-up.  If for some reaosn you were referring to the value compressed when decising if it would fit, this could be the issue.  Be sure to review the filesystem size prior to carrying out these commands and even creating the backup.
+  - corrupted data from the archiving process.. if you received 0 errors when making it, this would be unlikely unless your usb stick is bad/old/not formatted recently. 
+  - Go try the back-up steps again on the first device, ensuring you have a clean USB to save to, freshly formatted.
+  - Filesystems do not match or you're trying to restart an NTFS.
+  - FSArchiver's git page (https://github.com/fdupoux/fsarchiver) indicates that NTFS activites are experimental and that this only works on EFI systems, no MBR.
+  - Go review the FSArchiver.org webiste, their git page, or if need be after re-trying, raise an issue or seek help from the devs on your pariticular use case.
+
+- I had no errors and no issues booting directly to my grub menu for xUbuntu as if I was on the original device.  Booted into xUbuntu as usual as if I was on the original device
+- Keep in mind, this is a clone of the other device, so if you have networking configs specified, like static IP, your hostname, mounts in fstab that no longer exist on this machine, you will want to clean all that up.  
+
+
+
+
+
+# Sample of FSArchiver command outputs:
+  - Samples from: https://github.com/fdupoux/fsarchiver
+  - All rights belong to the respective developers and these samples are output for walkthrough/tutorial purposes only.  
+
+# fsarchiver archinfo /mnt/usb/myclone.fsa
+====================== archive information ======================
+Archive type:                   filesystems
+Filesystems count:              2
+Archive id:                     2a110D6F
+Archive file format:            FsArCh_002
+Archive created with:           0.7.6
+Archive creation date:          20100131-07:16:35
+Archive label:                  myclone
+Compression level:              7 (lzma level 1)
+Encryption algorithm:           none
+
+===================== filesystem information ====================
+Filesystem id in archive:       0
+Filesystem format:              vfat
+Filesystem label:               efi
+Filesystem uuid:                d76278bf-5e65-4568-a899
+Original device:                /dev/sda1
+Original filesystem size:       512.18 MB
+Space used in filesystem:       500.86 MB
+
+===================== filesystem information ====================
+Filesystem id in archive:       1
+Filesystem format:              ext4
+Filesystem label:               debian
+Filesystem uuid:                4b0da78f-7f02-4487-a1e2
+Original device:                /dev/sda2
+Original filesystem size:       111.81 GB
+Space used in filesystem:       8.11 GB 
+
+
+# fsarchiver savefs /mnt/usb/myclone.fsa /dev/sda1 /dev/sda2 -v -j4
+============= archiving filesystem /dev/sda1 =============
+-[00][REGFILE ] /vmlinuz-2.6.25.20-x64-fd13
+-[00][REGFILE ] /sysresccd/memdisk
+-[00][REGFILE ] /sysresccd/pxelinux.0
+-[00][REGFILE ] /sysresccd/initram.igz
+-[00][REGFILE ] /sysresccd/boot.cat
+.....
+-[00][DIR     ] /mkbootcd-gentoo64
+-[00][REGFILE ] /System.map-2.6.25.20-x64-fd13
+-[00][REGFILE ] /config-2.6.25.20-x64-fd13
+-[00][REGFILE ] /config-2.6.27.09-x64-fd16
+-[00][DIR     ] /
+============= archiving filesystem /dev/sda2 =============
+-[01][SYMLINK ] /bin/bb
+-[01][REGFILE ] /bin/dd
+-[01][REGFILE ] /bin/cp
+-[01][REGFILE ] /bin/df
+.....
+-[01][REGFILE ] /fdoverlay/profiles/repo_name
+-[01][DIR     ] /fdoverlay/profiles
+-[01][DIR     ] /fdoverlay
+-[01][DIR     ] /
+
+
+# fsarchiver probe simple
+[=====DEVICE=====] [==FILESYS==] [=====LABEL=====] [====SIZE====] [MAJ] [MIN]
+[/dev/sda1       ] [ext3       ] [boot           ] [   768.72 MB] [  8] [  1]
+[/dev/sda2       ] [reiserfs   ] [gentoo         ] [    12.00 GB] [  8] [  2]
+[/dev/sda3       ] [ext3       ] [data           ] [   350.00 GB] [  8] [  3]
+[/dev/sda4       ] [ext3       ] [backup         ] [   300.00 GB] [  8] [  4]
+[/dev/sda5       ] [lvm2pv     ] [               ] [   134.38 GB] [  8] [  5]
+[/dev/sda6       ] [lvm2pv     ] [               ] [   106.24 GB] [  8] [  6]
+[/dev/sdb1       ] [reiserfs   ] [usb8gb         ] [     7.46 GB] [  8] [ 17]
+
+
+## Command line and its arguments
+====> fsarchiver version 0.8.5 (2018-07-10) - http://www.fsarchiver.org <====
+Distributed under the GPL v2 license (GNU General Public License v2).
+ * usage: fsarchiver [<options>] <command> <archive> [<dev1> [<dev2> [...]]]
+<commands>
+ * savefs: save filesystems to an archive file (backup a device to a file)
+ * restfs: restore filesystems from an archive (overwrites the existing data)
+ * savedir: save directories to the archive (similar to a compressed tarball)
+ * restdir: restore data from an archive which is not based on a filesystem
+ * archinfo: show information about an existing archive file and its contents
+ * probe [detailed]: show list of filesystems detected on the disks
+<options>
+ -o: overwrite the archive if it already exists instead of failing
+ -v: verbose mode (can be used several times to increase the level of details)
+ -d: debug mode (can be used several times to increase the level of details)
+ -A: allow to save a filesystem which is mounted in read-write (live backup)
+ -a: allow to save a filesystem when acls and xattrs are not supported
+ -x: enable support for experimental features (they are disabled by default)
+ -e <pattern>: exclude files and directories that match that pattern
+ -L <label>: set the label of the archive (comment about the contents)
+ -z <level>: legacy compression level from 0 (very fast) to 9 (very good)
+ -Z <level>: zstd compression level from 1 (very fast) to 22 (very good)
+ -s <mbsize>: split the archive into several files of <mbsize> megabytes each
+ -j <count>: create more than one (de)compression thread. useful on multi-core cpu
+ -c <password>: encrypt/decrypt data in archive, "-c -" for interactive password
+ -h: show help and information about how to use fsarchiver with examples
+ -V: show program version and exit
+<information>
+ * Support included for: lzo=yes, lzma=yes, lz4=yes
+ * Support for ntfs filesystems is unstable: don't use it for production.
+<examples>
+ * save only one filesystem (/dev/sda1) to an archive:
+   fsarchiver savefs /data/myarchive1.fsa /dev/sda1
+ * save two filesystems (/dev/sda1 and /dev/sdb1) to an archive:
+   fsarchiver savefs /data/myarchive2.fsa /dev/sda1 /dev/sdb1
+ * restore the first filesystem from an archive (first = number 0):
+   fsarchiver restfs /data/myarchive2.fsa id=0,dest=/dev/sda1
+ * restore the second filesystem from an archive (second = number 1):
+   fsarchiver restfs /data/myarchive2.fsa id=1,dest=/dev/sdb1
+ * restore two filesystems from an archive (number 0 and 1):
+   fsarchiver restfs /data/arch2.fsa id=0,dest=/dev/sda1 id=1,dest=/dev/sdb1
+ * restore a filesystem from an archive and convert it to reiserfs:
+   fsarchiver restfs /data/myarchive1.fsa id=0,dest=/dev/sda1,mkfs=reiserfs
+ * restore a filesystem from an archive and specify extra mkfs options:
+   fsarchiver restfs /data/myarchive1.fsa id=0,dest=/dev/sda1,mkfs=ext4,mkfsopt="-I 256"
+ * restore a filesystem from an archive and specify a new label and a new UUID:
+   fsarchiver restfs /data/myarchive1.fsa id=0,dest=/dev/sda1,label=root,uuid=5f6e5f4f-dc2a-4dbd-a6ea-9ca997cde75e
+ * save the contents of /usr/src/linux to an archive (similar to tar):
+   fsarchiver savedir /data/linux-sources.fsa /usr/src/linux
+ * save a filesystem (/dev/sda1) to an archive split into volumes of 680MB:
+   fsarchiver savefs -s 680 /data/myarchive1.fsa /dev/sda1
+ * save a filesystem and exclude all files/dirs called 'pagefile.*':
+   fsarchiver savefs /data/myarchive.fsa /dev/sda1 --exclude='pagefile.*'
+ * generic exclude for 'share' such as '/usr/share' and '/usr/local/share':
+   fsarchiver savefs /data/myarchive.fsa --exclude=share
+ * absolute exclude valid for '/usr/share' but not for '/usr/local/share':
+   fsarchiver savefs /data/myarchive.fsa --exclude=/usr/share
+ * save a filesystem (/dev/sda1) to an encrypted archive:
+   fsarchiver savefs -c mypassword /data/myarchive1.fsa /dev/sda1
+ * same as before but prompt for password in the terminal:
+   fsarchiver savefs -c - /data/myarchive1.fsa /dev/sda1
+ * extract an archive made of simple files to /tmp/extract:
+   fsarchiver restdir /data/linux-sources.fsa /tmp/extract
+ * show information about an archive and its filesystems:
+   fsarchiver archinfo /data/myarchive2.fsa
+
+
+
