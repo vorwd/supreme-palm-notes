@@ -1,4 +1,4 @@
-# Walkthrough of closing a larger file system (111gb ext4, with 8gb in use) and then restoring that file system onto a smaller drive (64gb) via the FSArchiver Tool: https://github.com/fdupoux/fsarchiver
+# Walkthrough of cloning a larger file system (111gb ext4, with 8gb in use) and then restoring that file system onto a smaller drive (64gb) via the FSArchiver Tool: https://github.com/fdupoux/fsarchiver
 
 I had a 111gb ext4 partition, running xubuntu, that I wanted to duplicate and put onto a 64gb eMMC drive housed in a small ACER laptop with no means of disk expansion. xUbuntu install was using only about 8gb of the drive so would fit nicely.
 I found on reddit, a user (u/Snarka), make a suggestion to someone else about FSArchiver, but they had never used it themsevles -- I decided to go down that rabbit hole and found it to be quite easy overall.  I already had a USB image with Clonezilla so put it to use again.  
